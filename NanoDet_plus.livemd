@@ -1,0 +1,265 @@
+# Object detection by NanoDet plus
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.2.1"},
+  {:kino, "~> 0.6.2"},
+  {:onnx_interp, github: "shoz-f/onnx_interp"},
+  {:cimg, "~> 0.1.12"}
+])
+```
+
+## 0.Original work
+
+RangiLyu 炼丹人<br>
+NanoDet-Plus:Super fast and high accuracy lightweight anchor-free object detection model. Real-time on mobile devices.
+
+* NanoDet-plus: https://github.com/RangiLyu/nanodet
+* Technical docs: https://zhuanlan.zhihu.com/p/449912627
+
+***Thanks a lot!!!***<br>
+In this notebook, I uses the trained model "NanoDet-Plus-m-416" from GitHub/NanoDet-plus above, converted to ONNX format.
+
+---
+
+## Implementation with OnnxInterp in Elixir
+
+### 1.Prepare the onnx model
+
+Use Ibai's jupyter notebook (URL above) to get the converted NanoDet onnx model from the Pytorch model.
+You put the model into the livebook home directory.  And also you download the coco.label file and put it in the livebook directory.
+
+```shell
+> cd livebook
+> cp down-load-directory/yolov7.onnx .
+> wget https://raw.githubusercontent.com/shoz-f/onnx_livebook/main/demo_yolo7/coco.label
+```
+
+And we will define a helper module for Post-processing of NanoDet plus.
+
+```elixir
+defmodule PostDNN do
+  @doc """
+  Create a list of coordinates for mesh grid points.
+  """
+  def mesh_grid(shape, pitches, opts \\ [])
+
+  def mesh_grid(shape, pitches, opts) when is_list(pitches) do
+    Enum.map(pitches, &mesh_grid(shape, &1, opts))
+    |> Nx.concatenate()
+  end
+
+  def mesh_grid({w, h}, pitch, opts) when w >= 1 and h >= 1 do
+    m = trunc(Float.ceil(h / pitch))
+    n = trunc(Float.ceil(w / pitch))
+
+    # grid coodinates list
+    grid =
+      for(y <- 0..(m - 1), x <- 0..(n - 1), do: [x, y])
+      |> Nx.tensor(type: {:f, 32})
+      |> (&if(:center in opts, do: Nx.add(&1, 0.5), else: &1)).()
+      |> Nx.multiply(pitch)
+
+    # pitch list
+    pitch =
+      Nx.broadcast(pitch, {m * n, 1})
+      |> Nx.as_type({:f, 32})
+
+    Nx.concatenate([grid, pitch], axis: 1)
+  end
+
+  @doc """
+  Take records satisfying the predicate function `pred?`.
+  """
+  def sieve(tensor, pred?) do
+    # 各レコードが述語predを満たすかどうかの判定リストを作る
+    judge = pred?.(tensor)
+
+    # 条件を満たすレコードの数を求める
+    count = Nx.sum(judge) |> Nx.to_number()
+
+    # 条件を満たすレコードのindexリストを作る
+    index =
+      Nx.argsort(judge, direction: :desc)
+      |> Nx.slice_along_axis(0, count)
+
+    # 条件を満たすレコードを集めてTensorを作る
+    Nx.take(tensor, index)
+  end
+end
+```
+
+### 2.Defining the inference module: NanoDet
+
+* Model<br>
+  NanoDet-Plus-m-416.onnx converted from Pytorch model.
+
+* Pre-processing:<br>
+  Resize the input image to the size of `@nanodet_shape` and create a Float32 binary sequence normalized to the range {-2.2, 2.7}, NCHW, BGR.
+
+* Post-processing:<br>
+  Sieve output tensor f32[3598][112] by the score threshold, split it into class scores and   
+  bounding boxes, decode boxes and NMS.
+
+```elixir
+defmodule NanoDet do
+  use OnnxInterp, model: "./NanoDet-Plus-m-416.onnx", label: "./coco.label"
+
+  @nanodet_shape {416, 416}
+
+  def apply(img) do
+    # preprocess
+    bin =
+      img
+      |> CImg.resize(@nanodet_shape)
+      |> CImg.to_binary([{:range, {-2.2, 2.7}}, :nchw, :bgr])
+
+    # *+DEBUG:shoz:22/07/24:
+    # %Npy{shape: {1,3,416,416}, descr: "<f4", data: bin}
+    # |> Npy.save("ex_check/input0.npy")
+
+    # prediction
+    outputs =
+      __MODULE__
+      |> OnnxInterp.set_input_tensor(0, bin)
+      |> OnnxInterp.invoke()
+      |> OnnxInterp.get_output_tensor(0)
+      |> Nx.from_binary({:f, 32})
+      |> Nx.reshape({:auto, 112})
+
+    # *+DEBUG:shoz:22/07/24:
+    # Nx.reshape(outputs, {1, 3598, 112})
+    # |> Npy.save("ex_check/output0.npy")
+
+    # postprocess
+    {scores, boxes} =
+      Nx.concatenate([outputs, PostDNN.mesh_grid(@nanodet_shape, [8, 16, 32, 64])], axis: 1)
+      |> PostDNN.sieve(fn tensor ->
+        Nx.slice_along_axis(tensor, 0, 80, axis: 1)
+        |> Nx.reduce_max(axes: [1])
+        |> Nx.greater_equal(0.25)
+      end)
+      |> (&{Nx.slice_along_axis(&1, 0, 80, axis: 1), Nx.slice_along_axis(&1, 80, 35, axis: 1)}).()
+
+    # *+DEBUG:shoz:22/07/24:
+    # Npy.savez([scores, boxes], "ex_check/scores_boxes0.npz")
+    # Npy.savecsv(boxes, "ex_check/boxes0.csv")
+
+    {width, height, _, _} = CImg.shape(img)
+    boxes = decode_boxes(boxes, {width, height})
+
+    OnnxInterp.non_max_suppression_multi_class(
+      __MODULE__,
+      Nx.shape(scores),
+      Nx.to_binary(boxes),
+      Nx.to_binary(scores),
+      boxrepr: :corner
+    )
+  end
+
+  @doc """
+  Decode boxes.
+  """
+  def decode_boxes(tensor, world \\ {}) do
+    max_index = Nx.axis_size(tensor, 0) - 1
+
+    for(i <- 0..max_index, do: decode_box(tensor[i], world))
+    |> Nx.stack()
+  end
+
+  @doc """
+  Decode a boxe from it's probabilitity wing table.
+  """
+  def decode_box(tensor, world \\ {}) do
+    grid_x = Nx.to_number(tensor[-3])
+    grid_y = Nx.to_number(tensor[-2])
+
+    # [0, pitch, 2*pitch, ... 7*pitch]
+    arm = Nx.iota({8}) |> Nx.multiply(tensor[-1])
+
+    # private func: decode probability table to wing.
+    wing = fn t ->
+      max = Nx.reduce_max(t)
+
+      # prevent exp from becoming too big
+      {weight, sum} =
+        Nx.subtract(t, max)
+        |> Nx.exp()
+        |> (&{&1, Nx.sum(&1)}).()
+
+      # mean of probability list
+      Nx.dot(weight, arm) |> Nx.divide(sum) |> Nx.to_number()
+    end
+
+    {scale_w, scale_h} = scale(world)
+
+    [
+      scale_w * (grid_x - wing.(tensor[0..7])),
+      scale_h * (grid_y - wing.(tensor[8..15])),
+      scale_w * (grid_x + wing.(tensor[16..23])),
+      scale_h * (grid_y + wing.(tensor[24..31]))
+    ]
+    # keep coners of the box within the original photo.
+    |> keep_within(world)
+    |> Nx.stack()
+  end
+
+  defp keep_within(box, {}), do: box
+
+  defp keep_within([left, top, right, bottom], {width, height}) do
+    [max(left, 0), max(top, 0), min(right, width), min(bottom, height)]
+  end
+
+  defp scale({}), do: {1.0, 1.0}
+
+  defp scale({width, height}),
+    do: {width / elem(@nanodet_shape, 0), height / elem(@nanodet_shape, 1)}
+end
+```
+
+Launch `NanoDet`.
+
+```elixir
+NanoDet.start_link([])
+```
+
+Displays the properties of the `NanoDet` model.
+
+```elixir
+OnnxInterp.info(NanoDet)
+```
+
+## 3.Let's try it
+
+Prepare a BOX drawing function to show the position of the detected object.
+
+```elixir
+draw_object = fn builder, {name, boxes} ->
+  Enum.reduce(boxes, builder, fn [_score | box], canvas ->
+    [x0, y0, x1, y1] = Enum.map(box, &round(&1))
+
+    CImg.draw_rect(canvas, x0, y0, x1, y1, {255, 0, 0})
+    |> CImg.draw_text(x0, y0 - 16, name, 16, :red)
+  end)
+end
+```
+
+Load the dog.jpg image file and run NanoDet plus inference on it.
+
+```elixir
+img = CImg.load("dog.jpg")
+
+with {:ok, res} <- NanoDet.apply(img) do
+  # draw result box
+  Enum.reduce(Map.to_list(res), CImg.builder(img), &draw_object.(&2, &1))
+  |> CImg.run()
+else
+  _ -> img
+end
+|> CImg.resize({640, 480})
+|> CImg.display_kino(:jpeg)
+```
+
+## 4.TIL ;-)
+
+&#9633;
