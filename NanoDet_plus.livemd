@@ -4,7 +4,7 @@
 Mix.install([
   {:nx, "~> 0.2.1"},
   {:kino, "~> 0.6.2"},
-  {:onnx_interp, github: "shoz-f/onnx_interp"},
+  {:onnx_interp, "~> 0.1.4"},
   {:cimg, "~> 0.1.12"}
 ])
 ```
@@ -26,16 +26,23 @@ In this notebook, I uses the trained model "NanoDet-Plus-m-416" from GitHub/Nano
 
 ### 1.Prepare the onnx model
 
-Use Ibai's jupyter notebook (URL above) to get the converted NanoDet onnx model from the Pytorch model.
-You put the model into the livebook home directory.  And also you download the coco.label file and put it in the livebook directory.
+Use RangiLyu's python script (refer to GitHub:NandoDet/How to Deploy section) to get the converted NanoDet onnx model from the Pytorch model. You put the model into the livebook home directory. And also you download the coco.label file and put it in the livebook directory.
 
-```shell
-> cd livebook
-> cp down-load-directory/yolov7.onnx .
-> wget https://raw.githubusercontent.com/shoz-f/onnx_livebook/main/demo_yolo7/coco.label
+For your convenience, we have the models converted to onnx, coco labels, and photos for testing. You can download them to your Livebook home directory by running the cell below.
+
+```elixir
+# download onnx model, coco labels and a photo for test.
+[
+  "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/NanoDet-Plus-m-416.onnx",
+  "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/coco.label",
+  "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/dog.jpg"
+]
+|> Enum.each(fn x ->
+  System.shell("wget -nc #{x}")
+end)
 ```
 
-And we will define a helper module for Post-processing of NanoDet plus.
+Let's define a helper module for NanoDet plus post-processing.
 
 ```elixir
 defmodule PostDNN do
