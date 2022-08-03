@@ -47,7 +47,7 @@ For your convenience, we have the models converted to onnx, coco labels, and pho
 end)
 ```
 
-### 2.Defining the inference module: DemoYolo7
+### 2.Defining the inference module: Yolo7
 
 * Model<br>
   Standard Model: YOLOv7.onnx converted from Pytorch model.
@@ -60,7 +60,7 @@ end)
   and sieve the inference results by the score value threshold and NMS.
 
 ```elixir
-defmodule DemoYolo7 do
+defmodule Yolo7 do
   # use OnnxInterp, model: Helper.model(), label: Helper.label()
   use OnnxInterp, model: "./yolov7.onnx", label: "./coco.label"
 
@@ -113,16 +113,16 @@ defmodule DemoYolo7 do
 end
 ```
 
-Launch `DemoYolo7`.
+Launch `Yolo7`.
 
 ```elixir
-DemoYolo7.start_link([])
+Yolo7.start_link([])
 ```
 
 Displays the properties of the `YOLOv7` model.
 
 ```elixir
-OnnxInterp.info(DemoYolo7)
+OnnxInterp.info(Yolo7)
 ```
 
 ## 3.Let's try it
@@ -140,12 +140,12 @@ draw_object = fn builder, {name, boxes} ->
 end
 ```
 
-Load the dog.jpg image file and run NanoDet plus inference on it.
+Load the dog.jpg and run Yolo7 inference on it.
 
 ```elixir
 img = CImg.load("dog.jpg")
 
-with {:ok, res} <- DemoYolo7.apply(img) do
+with {:ok, res} <- Yolo7.apply(img) do
   # draw result box
   Enum.reduce(Map.to_list(res), CImg.builder(img), &draw_object.(&2, &1))
   |> CImg.run()

@@ -85,9 +85,13 @@ defmodule Unet do
 end
 ```
 
+Launch `Unet`.
+
 ```elixir
 Unet.start_link([])
 ```
+
+Displays the properties of the `U-Net` model.
 
 ```elixir
 OnnxInterp.info(Unet)
