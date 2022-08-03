@@ -1,0 +1,121 @@
+# Semantic Segmentation for Self Driving Cars: U-Net
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.2.1"},
+  {:kino, "~> 0.6.2"},
+  {:onnx_interp, "~> 0.1.5"},
+  {:cimg, "~> 0.1.12"}
+])
+```
+
+## 0.Original work
+
+MUKUL KUMAR
+
+* camvid segmentation using UNET:<br>
+  https://www.kaggle.com/code/mukulkr/camvid-segmentation-using-unet/notebook
+
+***Thanks a lot!!!***
+
+---
+
+## Implementation with OnnxInterp in Elixir
+
+## 1.Prepare the onnx model
+
+Use MUKUL KUMAR's Kaggle notebook to get the converted U-Net onnx model from Tensorflow. You put the model into the Livebook home directory.
+
+For your convenience, we have the models converted to onnx and photos for testing. You can download them to your Livebook home directory by running the cell below.
+
+```elixir
+# download onnx model, coco labels and a photo for test.
+[
+  "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/unet_camvid.onnx",
+  "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/0006R0_f02280.png"
+]
+|> Enum.each(fn x ->
+  System.shell("wget -nc #{x}")
+end)
+```
+
+## 2.Definig the inference module: Unet
+
+* Model<br>
+  unet_camvid.onnx converted from Tensorflow model trained with CamVid.
+
+* Pre-processing:<br>
+  Resize the input image to the size of `@unet_shape` and create a Float32 binary sequence normalized to the range {0.0, 1.0}.
+
+* Post-processing:<br>
+
+```elixir
+defmodule Unet do
+  use OnnxInterp, model: "./unet_camvid.onnx"
+
+  @unet_shape {512, 512}
+
+  def apply(img) do
+    # save original shape
+    {w, h, _, _} = CImg.shape(img)
+
+    # preprocess
+    bin =
+      CImg.builder(img)
+      |> CImg.resize(@unet_shape)
+      |> CImg.to_binary()
+
+    # prediction
+    outputs =
+      session()
+      |> OnnxInterp.set_input_tensor(0, bin)
+      |> OnnxInterp.run()
+      |> OnnxInterp.get_output_tensor(0)
+      |> Nx.from_binary({:f, 32})
+      |> Nx.reshape({512, 512, 32})
+
+    # postprocess
+    outputs
+    |> Nx.argmax(axis: 2)
+    |> Nx.as_type({:u, 8})
+    |> Nx.to_binary()
+    |> CImg.from_binary(512, 512, 1, 1, [{:dtype, "<u1"}])
+    |> CImg.resize({w, h})
+  end
+end
+```
+
+```elixir
+Unet.start_link([])
+```
+
+```elixir
+OnnxInterp.info(Unet)
+```
+
+## 3.Let's try it
+
+Load the sample photo.
+
+```elixir
+img = CImg.load("./0006R0_f02280.png")
+
+CImg.resize(img, 0.5) |> CImg.display_kino(:jpeg)
+```
+
+Run Unet inference on it.
+
+```elixir
+mask =
+  Unet.apply(img)
+  |> CImg.color_mapping(:lines)
+
+img
+|> CImg.blend(mask)
+|> CImg.resize(0.5)
+|> CImg.display_kino(:jpeg)
+```
+
+## 4.TIL ;-)
+
+&#9633;
