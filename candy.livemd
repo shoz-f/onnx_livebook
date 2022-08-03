@@ -1,0 +1,109 @@
+# Fast Neural Style: Candy
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.6.2"},
+  {:onnx_interp, "~> 0.1.5"},
+  {:cimg, "~> 0.1.12"}
+])
+```
+
+## 0.Original work
+
+ONNX Model Zoo:
+
+* Fast Neural Style Transfer<br>
+  https://github.com/onnx/models/tree/main/vision/style_transfer/fast_neural_style
+
+PyTorch Examples:
+
+* fast-neural-style<br>
+  https://github.com/pytorch/examples/tree/main/fast_neural_style
+
+***Thanks a lot!!!***<br>
+We got pre-trained candy style model from ONNX Model Zoo.
+
+---
+
+## Implementation with OnnxInterp in Elixir
+
+## 1.Prepare the onnx model
+
+For your convenience, we have the model and photos for testing. You can download them to your Livebook home directory by running the cell below.
+
+```elixir
+# download onnx model, coco labels and a photo for test.
+[
+  "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/candy-9.onnx",
+  "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/flog.jpg"
+]
+|> Enum.each(fn x ->
+  System.shell("wget -nc #{x}")
+end)
+```
+
+## 2.Defining the inference module: Candy
+
+* Model<br>
+  candy-9.onnx converted from Pytorch model.
+
+* Pre-processing:<br>
+  Resize the input image to the size of `@candy_shape` and create a Float32 binary sequence normalized to the range {0.0, 255.0}, NCHW.
+
+* Post-processing:<br>
+  Convert the Float32, shape:224x224, NCHW image to 8bit NHWC image.
+
+```elixir
+defmodule Candy do
+  use OnnxInterp, model: "./candy-9.onnx"
+
+  def apply(img) do
+    input =
+      CImg.builder(img)
+      |> CImg.resize({224, 224})
+      |> CImg.to_binary([{:dtype, "<f4"}, {:range, {0.0, 255.0}}, :nchw])
+
+    session()
+    |> OnnxInterp.set_input_tensor(0, input)
+    |> OnnxInterp.run()
+    |> OnnxInterp.get_output_tensor(0)
+    |> CImg.from_binary(224, 224, 1, 3, [{:dtype, "<f4"}, {:range, {0.0, 255.0}}, :nchw])
+  end
+end
+```
+
+Launch `Candy`.
+
+```elixir
+Candy.start_link([])
+```
+
+Displays the properties of the `Candy` model.
+
+```elixir
+OnnxInterp.info(Candy)
+```
+
+## 3.Let's try it
+
+Load the flog.jpg.
+
+```elixir
+img =
+  CImg.load("./flog.jpg")
+  |> CImg.resize({416, 416})
+
+CImg.display_kino(img, :jpeg)
+```
+
+Run `Candy` style on it.
+
+```elixir
+Candy.apply(img)
+|> CImg.resize({416, 416})
+|> CImg.display_kino(:jpeg)
+```
+
+## 4.TIL ;-)
+
+&#9633;
