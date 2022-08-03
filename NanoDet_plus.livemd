@@ -24,7 +24,7 @@ In this notebook, I uses the trained model "NanoDet-Plus-m-416" from GitHub/Nano
 
 ## Implementation with OnnxInterp in Elixir
 
-### 1.Prepare the onnx model
+## 1.Prepare the onnx model
 
 Use RangiLyu's python script (refer to GitHub:NandoDet/How to Deploy section) to get the converted NanoDet onnx model from the Pytorch model. You put the model into the livebook home directory. And also you download the coco.label file and put it in the livebook directory.
 
@@ -96,7 +96,7 @@ defmodule PostDNN do
 end
 ```
 
-### 2.Defining the inference module: NanoDet
+## 2.Defining the inference module: NanoDet
 
 * Model<br>
   NanoDet-Plus-m-416.onnx converted from Pytorch model.
@@ -105,8 +105,7 @@ end
   Resize the input image to the size of `@nanodet_shape` and create a Float32 binary sequence normalized to the range {-2.2, 2.7}, NCHW, BGR.
 
 * Post-processing:<br>
-  Sieve output tensor f32[3598][112] by the score threshold, split it into class scores and   
-  bounding boxes, decode boxes and NMS.
+  Sieve output tensor f32[3598][112] by the score threshold, split it into class scores and bounding boxes, decode boxes and NMS.
 
 ```elixir
 defmodule NanoDet do
@@ -251,7 +250,7 @@ draw_object = fn builder, {name, boxes} ->
 end
 ```
 
-Load the dog.jpg image file and run NanoDet plus inference on it.
+Load the dog.jpg and run NanoDet plus inference on it.
 
 ```elixir
 img = CImg.load("dog.jpg")
