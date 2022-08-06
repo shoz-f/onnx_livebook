@@ -1,0 +1,296 @@
+# Object detection by YOLOv2 (OnnxInterp version)
+
+```elixir
+# System.shell("chcp 65001")
+
+Mix.install([
+  {:nx, "~> 0.2.1"},
+  {:kino, "~> 0.6.2"},
+  {:onnx_interp, "~> 0.1.5"},
+  {:cimg, "~> 0.1.12"},
+  {:postdnn, "~> 0.1.2"}
+])
+```
+
+## 0.Original work
+
+@RyoWakabayashi
+
+* Elixir の AxonOnnx で YOLOv2 による物体検出を実行する
+  https://qiita.com/RyoWakabayashi/items/a550249b4ace1cce11f5
+
+> YOLOv2の出力tensorのデコード部のコードを200%参考にさせて頂いた。感謝感謝(^^)v
+
+***Thanks a lot!!!***
+
+---
+
+## Implementation with OnnxInterp in Elixir
+
+## 1.Prepare the onnx model
+
+YOLOv2の学習済みモデルは、ONNX Model Zooからダウンロードする。また、Cocoのラベルとテスト用の画像は小生のGitHubに置いているものをダウンロードする。
+
+```elixir
+# download onnx model, coco labels and a photo for test.
+[
+  "https://media.githubusercontent.com/media/onnx/models/main/vision/object_detection_segmentation/yolov2-coco/model/yolov2-coco-9.onnx",
+  "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/coco.label",
+  "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/dog.jpg"
+]
+|> Enum.each(fn x ->
+  System.shell("wget -nc #{x}")
+end)
+```
+
+## 2.Defining Yolo2 companion module
+
+meshgrid/3は拙作PostDNNモジュールに同じコードが含まれているが、参照&改造を行い易いようにここに複製を用意した(^_-)
+
+YOLOv2が出力するボックスは、メッシュ分割の格子に対する相対値として返されるので、特徴マップにおける絶対位置を求めるにはメッシュ格子の座標が必要になる。
+
+````elixir
+defmodule Yolo2.Friend do
+  @doc """
+  Create a list of (x,y) coordinates for mesh grid points - top-left of each grid.
+  
+  ## Parameters
+  
+    * shape - tupple {width, height} for overall size.
+    * pitches - list of grid spacing.
+    * opts
+      * :center - return center of each grid.
+      * :transpose - return transposed table
+      * :normalize - normalize (x,y) cordinate to {0.0..1.0}
+      * :rowfirst - change to row scan first. (default: column scan first)
+  
+  ## Examples
+  
+    ```
+    meshgrid({416,416}, [8,16,32,64], [:center])
+    ```
+  """
+  def meshgrid(shape, pitches, opts \\ [])
+
+  def meshgrid(shape, pitches, opts) when is_list(pitches) do
+    Enum.map(pitches, &meshgrid(shape, &1, opts))
+    |> Nx.concatenate()
+  end
+
+  def meshgrid({w, h}, pitch, opts) when w >= 1 and h >= 1 do
+    m = trunc(Float.ceil(h / pitch))
+    n = trunc(Float.ceil(w / pitch))
+
+    {scale, pitch} =
+      if :normalize in opts,
+        do: {Nx.tensor([pitch / w, pitch / h]), 1.0},
+        else: {Nx.tensor([pitch, pitch]), pitch}
+
+    # grid coodinates list
+    grid =
+      if :rowfirst in opts do
+        for x <- 0..(n - 1), y <- 0..(m - 1), do: [x, y]
+      else
+        for y <- 0..(m - 1), x <- 0..(n - 1), do: [x, y]
+      end
+      |> Nx.tensor(type: {:f, 32})
+      |> (&if(:center in opts, do: Nx.add(&1, 0.5), else: &1)).()
+      |> Nx.multiply(scale)
+
+    # pitch list
+    pitch =
+      Nx.broadcast(pitch, {m * n, 1})
+      |> Nx.as_type({:f, 32})
+
+    Nx.concatenate([grid, pitch], axis: 1)
+    |> (&if(:transpose in opts, do: Nx.transpose(&1), else: &1)).()
+  end
+end
+````
+
+## 3.Defining the inference module: Yolo2
+
+Yolo2は、416pix x 416pixの画像を縦横32pixの間隔で13x13のメッシュ格子に分割し、各格子内に5つのアンカーボックス配置し、認識対象物を検出しようとする。すなわち、総数=5x13x13=845個のボックス毎に、その中心座標、サイズ、評価値そしてそのボックスがどのCocoクラスに属していそうかの評価値(計85項目)を推論結果として出力する。
+
+出力はそのままでは利用することが出来ず、所定のデコード(正規化等)を施した後に利用する。対象物の検出有無の判断は、ボックスの評価値とクラス評価値の積を取った総合値で判断し、さらに一つの対象物に対し重複して検出したボックスはNon Maximum Suppression処理で取捨する。
+
+* Model<br>
+  Standard Model: yolov2-coco-9.onnx (ONNX Model Zooから入手)
+
+* Pre-processing:<br>
+  入力画像は、416pix x 416pixにサイズし、RGB各カラーチャネルごとに画素輝度(0～255)をFloat32{0.0～1.0}の範囲にレンジ変換する。尚、画像のフォーマットはNCHW。
+
+* Post-processing:<br>
+  DNNモデルが出力するtensorの形状は[5][85][13][13]。これを[85][5][13][13]のtensorに変形し、ボックスの中心座標、サイズ、評価値、クラス評価値のデコードを行う。その後、拙作のPostDNN.non_max_suppression_multi_classで対象物を検出する。
+
+```elixir
+defmodule Yolo2 do
+  use OnnxInterp, model: "./yolov2-coco-9.onnx"
+
+  @label (for item <- File.stream!("./coco.label") do
+            String.trim_trailing(item)
+          end)
+         |> Enum.with_index(&{&2, &1})
+         |> Enum.into(%{})
+
+  @yolo2_input {416, 416}
+  @yolo2_output {5, 85, 13, 13}
+  @grid Yolo2.Friend.meshgrid(@yolo2_input, 32, [:transpose]) |> Nx.tile([5])
+  @anchors Nx.tensor([
+             [0.57273, 0.677385],
+             [1.87446, 2.06253],
+             [3.33843, 5.47434],
+             [7.88282, 3.52778],
+             [9.77052, 9.16828]
+           ])
+
+  @doc """
+  apply YOLOv2 inference to the imge/CImg
+  """
+  def apply(img) do
+    # preprocess
+    bin =
+      img
+      |> CImg.resize(@yolo2_input)
+      # 画素輝度はRGB各色毎に0.0～1.0に正規化&レイアウトはNCHW
+      |> CImg.to_binary([:nchw])
+
+    # prediction
+    outputs =
+      __MODULE__
+      |> OnnxInterp.set_input_tensor(0, bin)
+      |> OnnxInterp.invoke()
+      |> OnnxInterp.get_output_tensor(0)
+      |> Nx.from_binary({:f, 32})
+      |> Nx.reshape(@yolo2_output)
+
+    # postprocess
+    outputs = Nx.transpose(outputs, axes: [1, 0, 2, 3]) |> Nx.reshape({85, :auto})
+
+    # row方向にBOX情報、BOX評価値、クラス評価値の項目が並び、colum方向に13x13のグリッドがアンカー5個分並ぶように tensorに変形する
+    # - 後の処理でスライシングをコンパクトに書けるようにする措置
+    # outputs: [box(4),box_score(1),class_score(80)]x[anchor0[13x13],anchor1[13x13],..,anchor4[13x13]]
+
+    boxes = decode_boxes(outputs)
+    scores = decode_scores(outputs)
+
+    # MEMO:22/08/06: クラス評価値の閾値処理によるBOXのふるい落とし機能は下記関数に含まれている
+    PostDNN.non_max_suppression_multi_class(
+      Nx.shape(scores),
+      Nx.to_binary(boxes),
+      Nx.to_binary(scores),
+      label: @label
+    )
+  end
+
+  @doc """
+  outputs[0..3]の値からバウンディングBOXの中心座標と縦横サイズをデコードする。
+  座標、寸法の単位は 416x416のにおけるそれとする。
+  出力は、row方向にBOXが、colum方向に中心座標(x,y),サイズ(w,h)項目が並んだ2rank tensor。
+  """
+  def decode_boxes(t) do
+    # decode box center coordinate on @yolo2_input
+    # sigmoid
+    center =
+      Nx.logistic(t[0..1])
+      # * pitch(=32.0)
+      |> Nx.multiply(@grid[2])
+      # + grid(x,y) on {416,416}
+      |> Nx.add(@grid[0..1])
+      |> Nx.transpose()
+
+    # decode box size
+    # exp
+    size =
+      Nx.exp(t[2..3])
+      # * pitch(=32.0)
+      |> Nx.multiply(@grid[2])
+      # multiply @anchors
+      |> Nx.reshape({2, 5, :auto})
+      |> Nx.transpose(axes: [2, 1, 0])
+      |> Nx.multiply(@anchors)
+      # get a transposed box sizes.
+      |> Nx.transpose(axes: [1, 0, 2])
+      |> Nx.reshape({:auto, 2})
+
+    Nx.concatenate([center, size], axis: 1)
+  end
+
+  @doc """
+  BOX評価値outputs[4]とクラス評価値outputs[5..79]から総合(?)クラス評価値をデコードする
+    総合クラス評価値 = 正規化BOX評価値 × 正規化クラス評価値
+  """
+  def decode_scores(t) do
+    # decode box confidence
+    # sigmoidで0.0～1.0に正規化
+    confidence = Nx.logistic(t[4])
+
+    # クラス評価値は、BOX毎に80クラス分のsoftmaxを取り、0.0～1.0に正規化する。
+    # decode class scores: (softmax normalized class score)*(box confidence)
+    exp = Nx.exp(t[5..-1//1])
+
+    # apply softmax on each class score
+    Nx.divide(exp, Nx.sum(exp, axes: [0]))
+    |> Nx.multiply(confidence)
+    |> Nx.transpose()
+  end
+
+  @doc """
+  実画像への倍率を返す {scale_x, scale_y}
+  """
+  def scale(img) do
+    {w, h, _, _} = CImg.shape(img)
+    {w0, h0} = @yolo2_input
+
+    {w / w0, h / h0}
+  end
+end
+```
+
+Launch `Yolo2`.
+
+```elixir
+Yolo2.start_link([])
+```
+
+Displays the properties of the `YOLOv2` model.
+
+```elixir
+OnnxInterp.info(Yolo2)
+```
+
+## 4.Let's try it
+
+Load the dog.jpg and run Yolo2 inference on it.
+
+```elixir
+img = CImg.load("dog.jpg")
+
+# define drawing function
+{scale_x, scale_y} = Yolo2.scale(img)
+
+draw_object = fn builder, {name, boxes} ->
+  Enum.reduce(boxes, builder, fn [_score, x0, y0, x1, y1], canvas ->
+    [x0, y0, x1, y1] =
+      Enum.map([scale_x * x0, scale_y * y0, scale_x * x1, scale_y * y1], &round(&1))
+
+    CImg.draw_rect(canvas, x0, y0, x1, y1, {255, 0, 0})
+    |> CImg.draw_text(x0, y0 - 16, name, 16, :red)
+  end)
+end
+
+# execute YOLOv2
+with {:ok, res} <- Yolo2.apply(img) do
+  # draw result box
+  Enum.reduce(Map.to_list(res), CImg.builder(img), &draw_object.(&2, &1))
+  |> CImg.run()
+else
+  _ -> img
+end
+|> CImg.resize({640, 480})
+|> CImg.display_kino(:jpeg)
+```
+
+## 4.TIL ;-)
+
+&#9633;
