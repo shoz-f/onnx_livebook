@@ -1,6 +1,8 @@
 # Object detection by YOLOv7
 
 ```elixir
+#System.shell("chcp 65001")
+
 Mix.install([
   {:nx, "~> 0.2.1"},
   {:kino, "~> 0.6.2"},

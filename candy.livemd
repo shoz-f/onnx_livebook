@@ -1,6 +1,8 @@
 # Fast Neural Style: Candy
 
 ```elixir
+#System.shell("chcp 65001")
+
 Mix.install([
   {:kino, "~> 0.6.2"},
   {:onnx_interp, "~> 0.1.5"},
