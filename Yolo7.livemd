@@ -1,7 +1,7 @@
 # Object detection by YOLOv7
 
 ```elixir
-#System.shell("chcp 65001")
+# System.shell("chcp 65001")
 
 Mix.install([
   {:nx, "~> 0.2.1"},
@@ -30,7 +30,7 @@ Ibai Gorordo (@ibai_gorordo)<br>
 
 ## Implementation with OnnxInterp in Elixir
 
-### 1.Prepare the onnx model
+## 1.Prepare the onnx model
 
 Use Ibai's jupyter notebook (URL above) to get the converted YOLOv7 onnx model from the Pytorch model.
 You put the model into the livebook home directory.  And also you download the coco.label file and put it in the livebook directory.
@@ -49,7 +49,7 @@ For your convenience, we have the models converted to onnx, coco labels, and pho
 end)
 ```
 
-### 2.Defining the inference module: Yolo7
+## 2.Defining the inference module: Yolo7
 
 * Model<br>
   Standard Model: YOLOv7.onnx converted from Pytorch model.
