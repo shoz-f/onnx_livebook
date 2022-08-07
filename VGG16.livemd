@@ -1,0 +1,121 @@
+# VGG16 image classification
+
+```elixir
+System.shell("chcp 65001")
+
+Mix.install([
+  {:nx, "~> 0.2.1"},
+  {:kino, "~> 0.6.2"},
+  {:onnx_interp, github: "shoz-f/onnx_interp"},
+  {:cimg, github: "shoz-f/cimg_ex"}
+])
+```
+
+## 0.Original work
+
+ONNX Model Zoo/VGG:
+
+* https://github.com/onnx/models/tree/main/vision/classification/vgg
+
+***Thanks a lot!!!***
+
+---
+
+## Implementation with OnnxInterp in Elixir
+
+## 1.Prepare the onnx model
+
+Download trained model, imagenet labels and photos for testing.
+
+```elixir
+# download onnx model, imagenet1000 labels and a photo for test.
+[
+  "https://github.com/onnx/models/raw/main/vision/classification/vgg/model/vgg16-7.onnx",
+  "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/imagenet1000.label",
+  "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/dog.jpg",
+  "https://er-animal.jp/pepy/wp-content/uploads/2016/12/shutterstock_123414550-e1484094929820.jpg"
+]
+|> Enum.each(fn x ->
+  System.shell("wget -nc #{x}")
+end)
+```
+
+## 2.Defining the inference module: Vgg16
+
+* Model<br>
+  vgg16-7.onnx: get from ONNX Model Zoo.
+
+* Pre-processing<br>
+  Resize the input image to the size fo `@vgg16_shape` and normalize to Float{-2.2..2.7}.
+
+* Post-processing<br>
+  Sort outputs and take first item.
+
+```elixir
+defmodule Vgg16 do
+  use OnnxInterp, model: "./vgg16-7.onnx"
+
+  @vgg16_shape {224, 224}
+
+  @imagenet1000 (for item <- File.stream!("./imagenet1000.label") do
+                   String.trim_trailing(item)
+                 end)
+                |> Enum.with_index(&{&2, &1})
+                |> Enum.into(%{})
+
+  def apply(img, top \\ 1) do
+    # preprocess
+    bin =
+      img
+      |> CImg.resize(@vgg16_shape)
+      |> CImg.to_binary([{:range, {-2.2, 2.7}}, :nchw])
+
+    # prediction
+    outputs =
+      __MODULE__
+      |> OnnxInterp.set_input_tensor(0, bin)
+      |> OnnxInterp.invoke()
+      |> OnnxInterp.get_output_tensor(0)
+      |> Nx.from_binary({:f, 32})
+      |> Nx.reshape({1000})
+
+    # postprocess
+    outputs
+    |> Nx.argsort(direction: :desc)
+    |> Nx.slice([0], [top])
+    |> Nx.to_flat_list()
+    |> Enum.map(&@imagenet1000[&1])
+  end
+end
+```
+
+Launch `Vgg16`.
+
+```elixir
+Vgg16.start_link([])
+```
+
+Display the properties of the `Vgg16` model.
+
+```elixir
+OnnxInterp.info(Vgg16)
+```
+
+## 3.Let's try it
+
+Load a photo and view it.
+
+```elixir
+img = CImg.load("./shutterstock_123414550-e1484094929820.jpg")
+CImg.display_kino(img, :jpeg)
+```
+
+Apply VGG16 to it.
+
+```elixir
+Vgg16.apply(img)
+```
+
+## 4.TIL ;-)
+
+&#9633;
