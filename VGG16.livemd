@@ -29,6 +29,8 @@ Download trained model, imagenet labels and photos for testing.
 
 ```elixir
 # download onnx model, imagenet1000 labels and a photo for test.
+File.mkdir("./data")
+
 [
   "https://github.com/onnx/models/raw/main/vision/classification/vgg/model/vgg16-7.onnx",
   "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/imagenet1000.label",
@@ -36,7 +38,7 @@ Download trained model, imagenet labels and photos for testing.
   "https://er-animal.jp/pepy/wp-content/uploads/2016/12/shutterstock_123414550-e1484094929820.jpg"
 ]
 |> Enum.each(fn x ->
-  System.shell("wget -nc #{x}")
+  System.shell("wget -nc #{x}", cd: "./data")
 end)
 ```
 
@@ -53,11 +55,11 @@ end)
 
 ```elixir
 defmodule Vgg16 do
-  use OnnxInterp, model: "./vgg16-7.onnx"
+  use OnnxInterp, model: "./data/vgg16-7.onnx"
 
   @vgg16_shape {224, 224}
 
-  @imagenet1000 (for item <- File.stream!("./imagenet1000.label") do
+  @imagenet1000 (for item <- File.stream!("./data/imagenet1000.label") do
                    String.trim_trailing(item)
                  end)
                 |> Enum.with_index(&{&2, &1})
@@ -103,17 +105,13 @@ OnnxInterp.info(Vgg16)
 
 ## 3.Let's try it
 
-Load a photo and view it.
+Load a photo and apply VGG16 to it.
 
 ```elixir
-img = CImg.load("./shutterstock_123414550-e1484094929820.jpg")
-CImg.display_kino(img, :jpeg)
-```
+img = CImg.load("./data/shutterstock_123414550-e1484094929820.jpg")
 
-Apply VGG16 to it.
-
-```elixir
-Vgg16.apply(img)
+Kino.render(CImg.display_kino(img, :jpeg))
+Vgg16.apply(img, 3)
 ```
 
 ## 4.TIL ;-)
