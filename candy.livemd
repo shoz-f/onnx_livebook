@@ -1,7 +1,7 @@
 # Fast Neural Style: Candy
 
 ```elixir
-#System.shell("chcp 65001")
+# System.shell("chcp 65001")
 
 Mix.install([
   {:kino, "~> 0.6.2"},
@@ -35,12 +35,14 @@ For your convenience, we have the model and photos for testing. You can download
 
 ```elixir
 # download onnx model, coco labels and a photo for test.
+File.mkdir("./data")
+
 [
   "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/candy-9.onnx",
   "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/flog.jpg"
 ]
 |> Enum.each(fn x ->
-  System.shell("wget -nc #{x}")
+  System.shell("wget -nc #{x}", cd: "./data")
 end)
 ```
 
@@ -57,7 +59,7 @@ end)
 
 ```elixir
 defmodule Candy do
-  use OnnxInterp, model: "./candy-9.onnx"
+  use OnnxInterp, model: "./data/candy-9.onnx"
 
   def apply(img) do
     input =
@@ -92,7 +94,7 @@ Load the flog.jpg.
 
 ```elixir
 img =
-  CImg.load("./flog.jpg")
+  CImg.load("./data/flog.jpg")
   |> CImg.resize({416, 416})
 
 CImg.display_kino(img, :jpeg)

@@ -1,7 +1,7 @@
 # Object detection by NanoDet plus
 
 ```elixir
-#System.shell("chcp 65001")
+# System.shell("chcp 65001")
 
 Mix.install([
   {:nx, "~> 0.2.1"},
@@ -34,13 +34,15 @@ For your convenience, we have the models converted to onnx, coco labels, and pho
 
 ```elixir
 # download onnx model, coco labels and a photo for test.
+File.mkdir("./data")
+
 [
   "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/NanoDet-Plus-m-416.onnx",
   "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/coco.label",
   "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/dog.jpg"
 ]
 |> Enum.each(fn x ->
-  System.shell("wget -nc #{x}")
+  System.shell("wget -nc #{x}", cd: "./data")
 end)
 ```
 
@@ -111,7 +113,7 @@ end
 
 ```elixir
 defmodule NanoDet do
-  use OnnxInterp, model: "./NanoDet-Plus-m-416.onnx", label: "./coco.label"
+  use OnnxInterp, model: "./data/NanoDet-Plus-m-416.onnx", label: "./data/coco.label"
 
   @nanodet_shape {416, 416}
 
@@ -255,7 +257,7 @@ end
 Load the dog.jpg and run NanoDet plus inference on it.
 
 ```elixir
-img = CImg.load("dog.jpg")
+img = CImg.load("./data/dog.jpg")
 
 with {:ok, res} <- NanoDet.apply(img) do
   # draw result box

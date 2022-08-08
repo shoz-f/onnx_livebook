@@ -33,13 +33,15 @@ YOLOv2の学習済みモデルは、ONNX Model Zooからダウンロードする
 
 ```elixir
 # download onnx model, coco labels and a photo for test.
+File.mkdir("./data")
+
 [
   "https://media.githubusercontent.com/media/onnx/models/main/vision/object_detection_segmentation/yolov2-coco/model/yolov2-coco-9.onnx",
   "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/coco.label",
   "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/dog.jpg"
 ]
 |> Enum.each(fn x ->
-  System.shell("wget -nc #{x}")
+  System.shell("wget -nc #{x}", cd: "./data")
 end)
 ```
 
@@ -125,9 +127,9 @@ Yolo2は、416pix x 416pixの画像を縦横32pixの間隔で13x13のメッシ�
 
 ```elixir
 defmodule Yolo2 do
-  use OnnxInterp, model: "./yolov2-coco-9.onnx"
+  use OnnxInterp, model: "./data/yolov2-coco-9.onnx"
 
-  @label (for item <- File.stream!("./coco.label") do
+  @label (for item <- File.stream!("./data/coco.label") do
             String.trim_trailing(item)
           end)
          |> Enum.with_index(&{&2, &1})
@@ -264,7 +266,7 @@ OnnxInterp.info(Yolo2)
 Load the dog.jpg and run Yolo2 inference on it.
 
 ```elixir
-img = CImg.load("dog.jpg")
+img = CImg.load("./data/dog.jpg")
 
 # define drawing function
 {scale_x, scale_y} = Yolo2.scale(img)

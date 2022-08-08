@@ -1,7 +1,7 @@
 # Semantic Segmentation for Self Driving Cars: U-Net
 
 ```elixir
-#System.shell("chcp 65001")
+# System.shell("chcp 65001")
 
 Mix.install([
   {:nx, "~> 0.2.1"},
@@ -32,12 +32,14 @@ For your convenience, we have the models converted to onnx and photos for testin
 
 ```elixir
 # download onnx model, coco labels and a photo for test.
+File.mkdir("./data")
+
 [
   "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/unet_camvid.onnx",
   "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/0006R0_f02280.png"
 ]
 |> Enum.each(fn x ->
-  System.shell("wget -nc #{x}")
+  System.shell("wget -nc #{x}", cd: "./data")
 end)
 ```
 
@@ -53,7 +55,7 @@ end)
 
 ```elixir
 defmodule Unet do
-  use OnnxInterp, model: "./unet_camvid.onnx"
+  use OnnxInterp, model: "./data/unet_camvid.onnx"
 
   @unet_shape {512, 512}
 
@@ -104,7 +106,7 @@ OnnxInterp.info(Unet)
 Load the sample photo.
 
 ```elixir
-img = CImg.load("./0006R0_f02280.png")
+img = CImg.load("./data/0006R0_f02280.png")
 
 CImg.resize(img, 0.5) |> CImg.display_kino(:jpeg)
 ```
