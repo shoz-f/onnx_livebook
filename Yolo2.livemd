@@ -53,9 +53,9 @@ YOLOv2が出力するボックスは、メッシュ分割の格子に対する�
 defmodule Yolo2.Friend do
   @doc """
   Create a list of (x,y) coordinates for mesh grid points - top-left of each grid.
-  
+
   ## Parameters
-  
+
     * shape - tupple {width, height} for overall size.
     * pitches - list of grid spacing.
     * opts
@@ -63,9 +63,9 @@ defmodule Yolo2.Friend do
       * :transpose - return transposed table
       * :normalize - normalize (x,y) cordinate to {0.0..1.0}
       * :rowfirst - change to row scan first. (default: column scan first)
-  
+
   ## Examples
-  
+
     ```
     meshgrid({416,416}, [8,16,32,64], [:center])
     ```
@@ -292,5 +292,24 @@ end
 ```
 
 ## 4.TIL ;-)
+
+Post-processにおけるtensor操作について少し真面目に考えてみた。
+
+YOLOv2 DNNの推論結果は下図左のように shape{425=5*85,16,16}の tensorで返される。見ためは高次の構造を持ったデータだが、実体は1280個のBOX(5アンカー × 256グリッド)それぞれの座標、評価値、クラス評価値を保持するmatrix(rank=2)に過ぎない。それ故に、処理の早い段階で理解し易くかつ操作し易いmatrixに変形することにした。
+
+tensorの変形にあたっては、Nxのシンタックス・シュガーを巧く利用できることを念頭においた。<br>
+ここで以下の説明のために用語を導入する。tensorのshapeが{1,2,3,4}であったとき、より左の軸(axis)を"上位"の軸、より右の軸を"下位"の軸と呼ぶことにする。
+
+Nxでは、tensorの操作・演算に対し下記のシンタックス・シュガーが用意されている
+
+1. 軸に沿ったスライシング<br>
+   一般に、軸に沿ってtensorをスライシングするには slice_along_axisを使用するが、最上位の軸でスライシングする場合は、tensor[a..b]と略記できる。
+2. 演算の繰り返し<br>
+   下位軸の部分shapeが一致していれば、上位の軸に向かって演算が自動的に繰り返される。<br>
+   Nx.add(tensorA[10][2], tensorB[2]) ⇒ for i <- 0..9 do tensorA[i][2] + tensorB[2] end
+
+これらとPost-processingで行う演算の組み合わせを検討し、下図右のmatrix(tnesor)に変形することにした。
+
+![transform output tensor](https://github.com/shoz-f/onnx_livebook/raw/main/Yolo2_assets/yolo2-tranforme.jpg)
 
 &#9633;
