@@ -272,4 +272,6 @@ end
 
 ## 4.TIL ;-)
 
+The BOX decoding code does not bring out the best of tensor operations because priority was placed on understanding the mechanism ;-)
+
 &#9633;
