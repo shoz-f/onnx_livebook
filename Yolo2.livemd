@@ -316,6 +316,6 @@ Nxでは、tensorの操作・演算に対し下記のシンタックス・シュ
 
 <br />
 
-考察2. 拙作PostDNN.non_max_suppression_multi_classが転置boxes, scoresを受け付けることが出来れば、decode_boxes, decode_scoresの最後の Nx.transposeは不要となる。実際、それは対応可能と思える => TODO(^^;)。
+考察2. 確かなことを調べた訳ではないが、Numpyにおいてもtransposeはデータの複製が発生する重たい処理と聞く。故に設計方針としては、transposeは必要最小限に抑えた方が良い。本稿においては、拙作PostDNN.non_max_suppression_multi_classの入力に合わせるために、decode_boxes,decode_scoresの最後にtransposeを行っているが、これは本当に必要かどうか吟味がすべきと思われる。例えば、PostDNN.non_max_suppression_multi_classtが転置boxes, scoresを受け付けることが出来れば、それらのtransposeは不要となる。実際、それは対応可能と思える => TODO(^^;)。
 
 &#9633;
