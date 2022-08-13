@@ -295,7 +295,7 @@ end
 
 ## 4.TIL ;-)
 
-Post-processにおけるtensor操作について少し真面目に考えてみた。
+考察1. Post-processにおけるtensor操作について少し真面目に考えてみた。
 
 YOLOv2 DNNの推論結果は下図左のように shape{425=5*85,16,16}の tensorで返される。見ためは高次の構造を持ったデータだが、実体は1280個のBOX(5アンカー × 256グリッド)それぞれの座標、評価値、クラス評価値を保持するmatrix(rank=2)に過ぎない。それ故に、処理の早い段階で理解し易くかつ操作し易いmatrixに変形することにした。
 
@@ -313,5 +313,9 @@ Nxでは、tensorの操作・演算に対し下記のシンタックス・シュ
 これらとPost-processingで行う演算の組み合わせを検討し、下図右のmatrix(tnesor)に変形することにした。
 
 ![transform output tensor](https://github.com/shoz-f/onnx_livebook/raw/main/Yolo2_assets/yolo2-tranforme.jpg)
+
+<br />
+
+考察2. 拙作PostDNN.non_max_suppression_multi_classが転置boxes, scoresを受け付けることが出来れば、decode_boxes, decode_scoresの最後の Nx.transposeは不要となる。実際、それは対応可能と思える => TODO(^^;)。
 
 &#9633;
