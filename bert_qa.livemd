@@ -30,14 +30,12 @@ Mix.install([
 File.mkdir("./data")
 
 [
-  # "https://tfhub.dev/tensorflow/lite-model/mobilebert/1/default/1?lite-format=tflite",
-  "https://github.com/shoz-f/tfl_livebook/releases/download/0.0.1/vocab.txt"
+  "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/mobilebert_squad.onnx",
+  "https://github.com/shoz-f/onnx_livebook/releases/download/0.1.0/vocab.txt"
 ]
 |> Enum.each(fn x ->
   System.shell("wget -nc #{x}", cd: "./data")
 end)
-
-# File.rename!("./data/1@lite-format=tflite", "./data/mobilebert_1_default_1.tflite")
 ```
 
 ## 2.Defining companion modules
@@ -278,7 +276,7 @@ defmodule MBertQA do
   @moduledoc """
   Documentation for `MBertQA`.
   """
-  use OnnxInterp, model: "data/mbert.onnx"
+  use OnnxInterp, model: "data/mobilebert_squad.onnx"
 
   alias MBertQA.Feature
 
