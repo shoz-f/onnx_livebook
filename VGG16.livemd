@@ -56,6 +56,7 @@ end)
 ```elixir
 defmodule Vgg16 do
   use OnnxInterp, model: "./data/vgg16-7.onnx"
+  alias OnnxInterp, as: NNInterp
 
   @vgg16_shape {224, 224}
 
@@ -75,9 +76,9 @@ defmodule Vgg16 do
     # prediction
     outputs =
       __MODULE__
-      |> OnnxInterp.set_input_tensor(0, bin)
-      |> OnnxInterp.invoke()
-      |> OnnxInterp.get_output_tensor(0)
+      |> NNInterp.set_input_tensor(0, bin)
+      |> NNInterp.invoke()
+      |> NNInterp.get_output_tensor(0)
       |> Nx.from_binary({:f, 32})
       |> Nx.reshape({1000})
 

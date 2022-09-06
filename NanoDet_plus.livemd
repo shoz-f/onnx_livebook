@@ -115,6 +115,7 @@ end
 ```elixir
 defmodule NanoDet do
   use OnnxInterp, model: "./data/NanoDet-Plus-m-416.onnx", label: "./data/coco.label"
+  alias OnnxInterp, as: NNInterp
 
   @nanodet_shape {416, 416}
   @nanodet_grid PostDNN.mesh_grid(@nanodet_shape, [8, 16, 32, 64])
@@ -138,9 +139,9 @@ defmodule NanoDet do
     # prediction
     outputs =
       __MODULE__
-      |> OnnxInterp.set_input_tensor(0, bin)
-      |> OnnxInterp.invoke()
-      |> OnnxInterp.get_output_tensor(0)
+      |> NNInterp.set_input_tensor(0, bin)
+      |> NNInterp.invoke()
+      |> NNInterp.get_output_tensor(0)
       |> Nx.from_binary({:f, 32})
       |> Nx.reshape({:auto, 112})
 
@@ -165,7 +166,7 @@ defmodule NanoDet do
     {width, height, _, _} = CImg.shape(img)
     boxes = decode_boxes(boxes, {width, height})
 
-    OnnxInterp.non_max_suppression_multi_class(
+    NNInterp.non_max_suppression_multi_class(
       __MODULE__,
       Nx.shape(scores),
       Nx.to_binary(boxes),

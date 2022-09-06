@@ -1,12 +1,12 @@
 # Object detection by YOLOv7
 
 ```elixir
-# System.shell("chcp 65001")
+System.shell("chcp 65001")
 
 Mix.install([
   {:nx, "~> 0.2.1"},
   {:kino, "~> 0.6.2"},
-  {:onnx_interp, "~> 0.1.5"},
+  {:onnx_interp, "~> 0.1.6"},
   {:cimg, "~> 0.1.12"}
 ])
 ```
@@ -67,6 +67,7 @@ end)
 defmodule Yolo7 do
   # use OnnxInterp, model: Helper.model(), label: Helper.label()
   use OnnxInterp, model: "./data/yolov7.onnx", label: "./data/coco.label"
+  alias OnnxInterp, as: NNInterp
 
   @yolo7_shape {640, 480}
 
@@ -80,9 +81,9 @@ defmodule Yolo7 do
     # prediction
     outputs =
       __MODULE__
-      |> OnnxInterp.set_input_tensor(0, bin)
-      |> OnnxInterp.invoke()
-      |> OnnxInterp.get_output_tensor(0)
+      |> NNInterp.set_input_tensor(0, bin)
+      |> NNInterp.invoke()
+      |> NNInterp.get_output_tensor(0)
       |> Nx.from_binary({:f, 32})
       |> Nx.reshape({:auto, 85})
 
@@ -90,7 +91,7 @@ defmodule Yolo7 do
     boxes = extract_boxes(outputs, scale(img))
     scores = extract_scores(outputs)
 
-    OnnxInterp.non_max_suppression_multi_class(
+    NNInterp.non_max_suppression_multi_class(
       __MODULE__,
       Nx.shape(scores),
       Nx.to_binary(boxes),

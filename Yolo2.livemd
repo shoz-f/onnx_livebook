@@ -1,7 +1,7 @@
 # Object detection by YOLOv2 (OnnxInterp version)
 
 ```elixir
-# System.shell("chcp 65001")
+System.shell("chcp 65001")
 
 Mix.install([
   {:nx, "~> 0.2.1"},
@@ -128,6 +128,7 @@ Yolo2は、416pix x 416pixの画像を縦横32pixの間隔で13x13のメッシ�
 ```elixir
 defmodule Yolo2 do
   use OnnxInterp, model: "./data/yolov2-coco-9.onnx"
+  alias OnnxInterp, as: NNInterp
 
   @label (for item <- File.stream!("./data/coco.label") do
             String.trim_trailing(item)
@@ -160,9 +161,9 @@ defmodule Yolo2 do
     # prediction
     outputs =
       __MODULE__
-      |> OnnxInterp.set_input_tensor(0, bin)
-      |> OnnxInterp.invoke()
-      |> OnnxInterp.get_output_tensor(0)
+      |> NNInterp.set_input_tensor(0, bin)
+      |> NNInterp.invoke()
+      |> NNInterp.get_output_tensor(0)
       |> Nx.from_binary({:f, 32})
       |> Nx.reshape(@yolo2_output)
 

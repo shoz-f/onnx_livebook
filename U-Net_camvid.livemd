@@ -56,6 +56,7 @@ end)
 ```elixir
 defmodule Unet do
   use OnnxInterp, model: "./data/unet_camvid.onnx"
+  alias OnnxInterp, as: NNInterp
 
   @unet_shape {512, 512}
 
@@ -72,9 +73,9 @@ defmodule Unet do
     # prediction
     outputs =
       session()
-      |> OnnxInterp.set_input_tensor(0, bin)
-      |> OnnxInterp.run()
-      |> OnnxInterp.get_output_tensor(0)
+      |> NNInterp.set_input_tensor(0, bin)
+      |> NNInterp.run()
+      |> NNInterp.get_output_tensor(0)
       |> Nx.from_binary({:f, 32})
       |> Nx.reshape({512, 512, 32})
 
